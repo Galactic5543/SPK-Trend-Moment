@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SPK Peramalan Trend Moment</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="container my-4" id="app">
+
+    <div class="input-wrap">
+
+    <!-- 1. Unggah data -->
+    <section class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h1 class="h4 text-center mb-1">SPK Peramalan Trend Moment</h1>
+        <p class="text-center text-muted small mb-4">Unggah data, cocokkan kolom, lalu lihat hasil peramalan.</p>
+        <h2 class="h5 card-title"><span class="step-no">1</span>Unggah Data</h2>
+        <p class="text-muted small mb-3">
+          File CSV atau Excel (.xlsx / .xls). Baris pertama harus berisi nama kolom.
+          Setelah diunggah, daftar kolom akan ditampilkan dan Anda mencocokkannya pada langkah berikutnya.
+        </p>
+        <input type="file" id="excelFile" class="form-control" accept=".csv,.xlsx,.xls">
+        <div id="alertBox" class="mt-3"></div>
+
+        <div id="kolomInfo" class="d-none mt-3">
+          <div class="fw-semibold small mb-2">Kolom yang ditemukan <span id="kolomCount" class="text-muted fw-normal"></span></div>
+          <div id="chips" class="chips mb-3"></div>
+          <div class="small text-muted mb-1">Pratinjau 5 baris pertama</div>
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered preview mb-0" id="tabelPratinjau"></table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. Pencocokan kolom -->
+    <section id="sec2" class="card shadow-sm mb-4 d-none">
+      <div class="card-body">
+        <h2 class="h5 card-title"><span class="step-no">2</span>Pencocokan Kolom</h2>
+        <p class="text-muted small mb-3">
+          Ketik nama kolom (atau pilih dari daftar yang muncul, atau klik nama kolom di langkah 1) untuk setiap isian di bawah.
+          Isian yang sudah terbaca otomatis tetap bisa Anda ubah.
+        </p>
+
+        <datalist id="listKolom"></datalist>
+
+        <div class="map-grid">
+          <label for="mapPeriode">Bulan (periode) <span class="req">*</span></label>
+          <input id="mapPeriode" class="form-control form-control-sm map-input" list="listKolom" autocomplete="off" placeholder="nama kolom">
+          <span class="hint">Kolom berisi nama bulan, periode, atau tanggal.</span>
+
+          <label for="mapY">Jumlah (y) <span class="req">*</span></label>
+          <input id="mapY" class="form-control form-control-sm map-input" list="listKolom" autocomplete="off" placeholder="nama kolom">
+          <span class="hint">Kolom berisi nilai aktual yang akan diramal.</span>
+
+          <label for="mapTahun">Tahun data pertama</label>
+          <input id="mapTahun" type="number" class="form-control form-control-sm" min="1900" max="2300" placeholder="mis. 2012">
+          <span class="hint">Isi bila kolom bulan hanya berisi nama bulan tanpa tahun (tahun untuk baris pertama). Kosongkan bila tahun sudah ada di data.</span>
+        </div>
+        
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="roundAB" checked>
+          <label class="form-check-label small" for="roundAB">
+            Gunakan 2 desimal untuk a, b, dan indeks musim (a dan b dipotong, bukan dibulatkan)
+          </label>
+        </div>
+
+        <div class="mt-3">
+          <button id="btnHitung" class="btn btn-primary">Cocokkan Kolom &amp; Hitung</button>
+        </div>
+        <div id="catatanData" class="mt-3"></div>
+      </div>
+    </section>
+
+    </div><!-- /input-wrap -->
+
+    <!-- Hasil -->
+    <section id="hasil" class="d-none">
+
+      <!-- 3. Tabel hasil perhitungan -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-body">
+          <h2 class="h5 card-title"><span class="step-no">3</span>Tabel Hasil Perhitungan</h2>
+          <div class="table-responsive">
+            <table class="tbl-spk" id="tabelHasil"></table>
+          </div>
+          <div id="kesimpulanTabel" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- 4. Rumus -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-body explain">
+          <h2 class="h5 card-title"><span class="step-no">4</span>Mencari Rumus Y' = a + bx</h2>
+          <div id="langkahRumus"></div>
+        </div>
+      </div>
+
+      <!-- 5. Indeks musim -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-body explain">
+          <h2 class="h5 card-title"><span class="step-no">5</span>Indeks Musim</h2>
+          <div id="langkahMusim"></div>
+        </div>
+      </div>
+
+      <!-- 6. Prediksi -->
+      <div class="card shadow-sm mb-4">
+        <div class="card-body explain">
+          <h2 class="h5 card-title"><span class="step-no">6</span>Prediksi Bulan yang Dipilih</h2>
+          <p class="text-muted small mb-3" id="targetPetunjuk">Pilih periode yang ingin diprediksi, lalu klik "Hitung Prediksi".</p>
+          <div class="row g-2 align-items-end" id="targetForm">
+            <div class="col-md-3 col-6" id="boxTgtMonth">
+              <label class="form-label small mb-1" for="tgtMonth">Bulan</label>
+              <select id="tgtMonth" class="form-select form-select-sm"><option value="">Pilih bulan</option></select>
+            </div>
+            <div class="col-md-3 col-6" id="boxTgtYear">
+              <label class="form-label small mb-1" for="tgtYear">Tahun</label>
+              <input type="number" id="tgtYear" class="form-control form-control-sm" placeholder="mis. 2026" min="1900" max="2300">
+            </div>
+            <div class="col-md-3 col-6 d-none" id="boxTgtX">
+              <label class="form-label small mb-1" for="tgtX">Periode ke- (x)</label>
+              <input type="number" id="tgtX" class="form-control form-control-sm" min="0" step="1">
+            </div>
+            <div class="col-md-3 col-6 d-none" id="boxTgtStart">
+              <label class="form-label small mb-1" for="tgtStartYear">Tahun periode pertama data</label>
+              <input type="number" id="tgtStartYear" class="form-control form-control-sm" placeholder="mis. 2012" min="1900" max="2300">
+            </div>
+            <div class="col-md-3 col-6 d-grid">
+              <button type="button" id="btnTarget" class="btn btn-primary btn-sm">Hitung Prediksi</button>
+            </div>
+          </div>
+          <div id="targetAlert" class="mt-3"></div>
+          <div id="targetHasil" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- 7. Grafik -->
+      <div class="card shadow-sm mb-5">
+        <div class="card-body">
+          <h2 class="h5 card-title"><span class="step-no">7</span>Grafik Aktual vs Prediksi</h2>
+          <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
+          <div id="penjelasanGrafik" class="alert alert-light border mt-3 mb-0 small"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
