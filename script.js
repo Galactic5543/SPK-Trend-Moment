@@ -8,7 +8,7 @@
    Indeks musim = rata-rata bulan tertentu / rata-rata seluruh periode
    Prediksi akhir = Y' × indeks musim */
 
-const START_X = 1;        // indeks waktu mulai dari 1 (bila kolom x tidak dicocokkan)
+const START_X = 0;        // indeks waktu mulai dari 0
 const MAX_STEPS = 600;    // batas jarak target dari data terakhir
 const MAX_FUTURE_LABELS = 36;
 
@@ -318,6 +318,12 @@ function resolveYears(data, startYear) {
   });
 }
 
+/* Data tanpa tahun: periode terakhir dianggap bulan terakhir yang sudah lewat (tidak melebihi hari ini). */
+function assumedLastYear(lastMonth) {
+  const now = new Date();
+  return now.getFullYear() - (lastMonth <= now.getMonth() + 1 ? 0 : 1);
+}
+
 /* ======================= Trend Moment ======================= */
 function trendMoment(data, rounding) {
   const n = data.length;
@@ -361,6 +367,7 @@ function showAlert(msg, type = 'danger') {
 function resetResults() {
   state = null;
   $('hasil').classList.add('d-none');
+  document.body.classList.remove('has-result');
   $('catatanData').innerHTML = '';
 }
 
@@ -381,6 +388,8 @@ function fillMapping() {
   $('mapPeriode').value = name(det.dateIdx);
   $('mapY').value = name(det.valIdx);
   document.querySelectorAll('.map-input').forEach(e => e.classList.remove('is-bad'));
+  $('mapTahun').value = '';
+  $('mapTahun').classList.remove('is-invalid');
   $('sec2').classList.remove('d-none');
 }
 
@@ -430,6 +439,20 @@ function onCalculate() {
 
     const rounding = $('roundAB').checked;
     const kind = classify(data);
+    const startYear = parseInt($('mapTahun').value, 10);
+    if ($('mapTahun').value.trim() !== '' && (Number.isNaN(startYear) || startYear < 1900 || startYear > 2300)) {
+      $('mapTahun').classList.add('is-invalid');
+      throw new Error('Tahun data pertama tidak valid. Isi dengan 4 angka, misalnya 2012.');
+    }
+    $('mapTahun').classList.remove('is-invalid');
+    if (kind === 'bulan' && !Number.isNaN(startYear)) {
+      // Periode tanpa tahun diberi tahun (bertambah tiap bulan berputar), label yang sudah bertahun dibiarkan
+      const yrs = resolveYears(data, startYear);
+      data.forEach((d, i) => {
+        const p = parsePeriod(d.periode);
+        if (p.year == null) d.periode = `${MONTHS_ID[p.month - 1]} ${yrs[i]}`;
+      });
+    }
     const res = trendMoment(data, rounding);
     data.forEach(d => { d.yp = res.a + res.b * d.x; });
 
@@ -452,6 +475,7 @@ function onCalculate() {
     renderMusim();
     setupTarget();
     $('hasil').classList.remove('d-none');
+    document.body.classList.add('has-result');
     runTarget();
     $('hasil').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (err) {
@@ -531,6 +555,13 @@ function renderRumus() {
     ${rounding ? '<p class="small text-muted">Nilai a dan b diambil 2 desimal (dipotong, bukan dibulatkan) sebelum dipakai meramal. Matikan opsi 2 desimal di langkah 2 untuk memakai nilai tanpa pemotongan.</p>' : ''}
     <p class="mb-2">Persamaan yang diperoleh:</p>
     <div class="eq-result mb-3">Y' = ${fmtAB(a)} ${naik ? '+' : '−'} ${fmtAB(Math.abs(b))} x</div>
+    <p class="mb-2">Dengan persamaan tersebut, nilai Y' tiap periode dihitung dengan memasukkan nilai x:</p>
+    <div class="table-responsive mb-3">
+      <table class="tbl-spk" style="max-width:640px">
+        <thead><tr><th>${esc(state.names.periode)}</th><th>x</th><th>Perhitungan Y' = a + bx</th><th>Y'</th><th>y (aktual)</th></tr></thead>
+        <tbody>${data.map(d => `<tr><td>${esc(d.periode)}</td><td>${fmtN(d.x)}</td><td>${fmtAB(a)} ${b >= 0 ? '+' : '−'} (${fmtAB(Math.abs(b))} × ${fmtN(d.x)})</td><td>${fmt(d.yp)}</td><td>${fmtN(d.y)}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
     <p>Setiap periode, nilai pada garis tren ${naik ? 'naik' : 'turun'} sekitar ${fmtAB(Math.abs(b))}
     (${Math.abs(persenB).toFixed(2).replace('.', ',')}% dari rata-rata data), sehingga tren data ${arah}.</p>
     ${mapeText}`;
@@ -575,17 +606,17 @@ function setupTarget() {
   $('boxTgtX').classList.toggle('d-none', kind !== 'indeks');
   const years = kind === 'bulan' ? resolveYears(data, NaN) : [];
   const yearless = kind === 'bulan' && years[years.length - 1] == null;
-  $('boxTgtStart').classList.toggle('d-none', !yearless);
-  $('tgtStartYear').value = '';
+  $('boxTgtStart').classList.add('d-none');
   $('targetAlert').innerHTML = '';
 
   if (kind === 'bulan') {
     const nm = last.month % 12 + 1;
     $('tgtMonth').value = String(nm);
+    state.anchorL = null;
     const ly = years[years.length - 1];
-    $('tgtYear').value = ly != null ? String(ly + (last.month === 12 ? 1 : 0)) : '';
+    $('tgtYear').value = yearless ? '' : String(ly + (last.month === 12 ? 1 : 0));
     $('targetPetunjuk').textContent = yearless
-      ? 'Kolom periode hanya berisi nama bulan tanpa tahun. Isi "Tahun periode pertama data", lalu pilih bulan dan tahun yang ingin diprediksi.'
+      ? `Pilih bulan dan tahun yang ingin diprediksi, lalu klik "Hitung Prediksi". Data tidak memuat tahun, sehingga bulan dan tahun pertama yang Anda pilih dianggap sebagai periode pertama setelah data terakhir (${last.periode}).`
       : `Pilih bulan dan tahun yang ingin diprediksi (data terakhir: ${last.periode}), lalu klik "Hitung Prediksi".`;
   } else if (kind === 'tahun') {
     $('tgtYear').value = String(parsePeriod(last.periode).year + 1);
@@ -602,19 +633,19 @@ function planTarget() {
   let steps, label, month = null;
 
   if (kind === 'bulan') {
-    const startYear = parseInt($('tgtStartYear').value, 10);
-    const years = resolveYears(data, startYear);
-    const ly = years[years.length - 1];
-    if (ly == null) {
-      const e = new Error('Kolom periode hanya berisi nama bulan tanpa tahun. Isi "Tahun periode pertama data" '
-        + '(tahun untuk bulan pertama di data), lalu pilih bulan dan tahun yang ingin diprediksi.');
-      e.soft = true;
-      throw e;
-    }
+    const years = resolveYears(data, NaN);
     month = parseInt($('tgtMonth').value, 10);
     const yr = parseInt($('tgtYear').value, 10);
     if (!month) throw new Error('Pilih bulan target.');
     if (Number.isNaN(yr)) throw new Error('Isi tahun target.');
+    let ly = years[years.length - 1];
+    if (ly == null) {
+      if (state.anchorL == null) {
+        const first = ((month - last.month + 11) % 12) + 1;
+        state.anchorL = (yr * 12 + month - first - last.month) / 12;
+      }
+      ly = state.anchorL;
+    }
     steps = (yr * 12 + month) - (ly * 12 + last.month);
     label = `${MONTHS_ID[month - 1]} ${yr}`;
   } else if (kind === 'tahun') {
@@ -675,16 +706,37 @@ function runTarget() {
   }
 
   const naik = res.b >= 0;
-  const kesimpulan = [
-    `Garis tren <strong>${naik ? 'naik' : 'turun'}</strong> sebesar ${fmtAB(Math.abs(res.b))} per periode (Y' = ${fmtAB(res.a)} ${naik ? '+' : '−'} ${fmtAB(Math.abs(res.b))} x).`,
-    `Prediksi untuk <strong>${esc(plan.label)}</strong> adalah <strong>${fmt(final)}</strong>`
-      + (useSeason ? ` (trend ${fmt(yp)} dikoreksi indeks musim ${fmt(im)}${imMissing ? '*' : ''}).` : ' (berdasarkan trend, tanpa koreksi musiman).'),
-    inHistory
-      ? `Periode ini sudah ada di data historis; nilai aktualnya ${fmtN(actual)}.`
-      : `Periode ini berada ${plan.steps} periode setelah data terakhir (${esc(last.periode)}, x = ${fmtN(last.x)}).`
-  ];
-  if (!Number.isNaN(mape)) kesimpulan.push(`Tingkat kesalahan garis tren terhadap data historis (MAPE) sebesar ${fmt(mape)}%.`);
-  if (kind === 'bulan' && data.length < 12) kesimpulan.push('Data kurang dari 12 bulan sehingga indeks musim hanya perkiraan kasar.');
+  const n = data.length;
+  const satuan = kind === 'bulan' ? 'bulan' : 'periode';
+  let p1 = `Berdasarkan ${n} ${satuan} data yang diunggah, nilai cenderung <strong>${naik ? 'naik' : 'turun'}</strong> sekitar ${fmtAB(Math.abs(res.b))} setiap ${satuan}. `
+    + `Rumus garis tren yang diperoleh adalah Y' = ${fmtAB(res.a)} ${naik ? '+' : '−'} ${fmtAB(Math.abs(res.b))}x. `;
+  if (inHistory) {
+    p1 += `<strong>${esc(plan.label)}</strong> sudah ada di data, dengan nilai sebenarnya ${fmtN(actual)}. Garis tren memberi angka ${fmt(yp)}`
+      + (useSeason ? `, lalu dikoreksi indeks musim menjadi <strong>${fmt(final)}</strong>.` : '.');
+  } else {
+    p1 += `Untuk <strong>${esc(plan.label)}</strong> (${plan.steps} ${satuan} setelah data terakhir), garis tren memberi angka ${fmt(yp)}`
+      + (useSeason ? `, lalu dikoreksi indeks musim sehingga hasil ramalan akhirnya adalah <strong>${fmt(final)}</strong>.` : `, sehingga hasil ramalannya adalah <strong>${fmt(final)}</strong>.`);
+  }
+  let p2 = '';
+  if (useSeason && !imMissing) {
+    const persen = Math.round(im * 100);
+    const arah = im < 0.95 ? `biasanya lebih rendah dari rata-rata bulan lain (sekitar ${persen}% dari rata-rata)`
+      : im > 1.05 ? `biasanya lebih tinggi dari rata-rata bulan lain (sekitar ${persen}% dari rata-rata)`
+      : 'biasanya hampir sama dengan rata-rata bulan lain';
+    p2 = `Koreksi dilakukan karena ${MONTHS_ID[plan.month - 1]} ${arah}, yaitu indeks musim ${fmt(im)}. `;
+  } else if (useSeason && imMissing) {
+    p2 = `Bulan ${MONTHS_ID[plan.month - 1]} belum ada di data, jadi tidak ada koreksi musim (indeks 1,00). `;
+  }
+  if (!Number.isNaN(mape)) {
+    const tingkat = mape < 10 ? 'sangat kecil, sehingga garis tren cocok dengan data'
+      : mape < 20 ? 'kecil, sehingga garis tren cukup cocok dengan data'
+      : mape < 50 ? 'sedang, sehingga garis tren hanya cukup mewakili data'
+      : 'cukup besar, artinya data naik-turun tajam dan tidak mengikuti garis tren dengan dekat';
+    p2 += `Rata-rata selisih antara garis tren dan data sebenarnya (MAPE) adalah ${fmt(mape)}%, tergolong ${tingkat}. `
+      + (mape >= 20 ? 'Karena itu, anggap hasil ini sebagai perkiraan kasar, bukan angka pasti.' : 'Hasil ini cukup layak dijadikan acuan.');
+  }
+  if (kind === 'bulan' && n < 12) p2 += ' Data kurang dari 12 bulan, sehingga indeks musim hanya perkiraan kasar.';
+  const kesimpulanHtml = `<p class="mb-2">${p1}</p>` + (p2 ? `<p class="mb-0">${p2.trim()}</p>` : '');
 
   $('targetHasil').innerHTML = `
     <div class="card target-card">
@@ -701,7 +753,7 @@ function runTarget() {
     </div>
     <div class="alert alert-primary mt-3 mb-0">
       <h3 class="h6 mb-2">Kesimpulan</h3>
-      <ul class="mb-0">${kesimpulan.map(k => `<li>${k}</li>`).join('')}</ul>
+      ${kesimpulanHtml}
     </div>`;
 
   renderChart(plan, yp, final, useSeason);
@@ -732,6 +784,20 @@ function renderChart(plan, yp, final, useSeason) {
     labels[labels.length - 1] = plan.label;
     hasil[hasil.length - 1] = final;
   }
+
+  const kanan = plan.steps > 0 ? `${plan.steps} ${state.kind === 'bulan' ? 'bulan' : 'periode'} ke depan` : 'di dalam data';
+  const turun = final < yp - 1e-9, naik2 = final > yp + 1e-9;
+  $('penjelasanGrafik').innerHTML = `
+    <h3 class="h6 mb-2">Cara membaca grafik</h3>
+    <ul class="mb-2">
+      <li><strong style="color:#0d6efd">Garis biru</strong>: data sebenarnya. Naik-turunnya garis menunjukkan nilai tiap ${state.kind === 'bulan' ? 'bulan' : 'periode'} yang berubah-ubah.</li>
+      <li><strong style="color:#e8590c">Garis oranye putus-putus</strong>: arah umum (tren) dari seluruh data, dibuat lurus supaya mudah terlihat apakah nilai cenderung ${res.b >= 0 ? 'naik' : 'turun'}. Garis ini diteruskan ${kanan} sampai ${esc(plan.label)}.</li>
+      <li><strong style="color:#2f9e44">Titik hijau (belah ketupat)</strong>: hasil ramalan akhir untuk ${esc(plan.label)}, yaitu ${fmt(final)}.</li>
+    </ul>
+    <p class="mb-0">${useSeason && (turun || naik2)
+      ? `Titik hijau berada ${turun ? 'di bawah' : 'di atas'} garis oranye karena angka tren (${fmt(yp)}) masih dikoreksi dengan kebiasaan musim bulan tersebut. `
+      : 'Titik hijau berada pada garis oranye karena tidak ada koreksi musim. '}
+      Semakin dekat garis biru ke garis oranye, semakin baik garis tren mewakili data; bila garis biru naik-turun jauh dari garis oranye, ramalan sebaiknya dianggap perkiraan kasar.</p>`;
 
   if (chartInstance) chartInstance.destroy();
   chartInstance = new Chart($('chartTrend'), {
@@ -782,7 +848,7 @@ async function onFileChange() {
 $('excelFile').addEventListener('change', onFileChange);
 $('btnHitung').addEventListener('click', onCalculate);
 $('btnTarget').addEventListener('click', runTarget);
-['tgtMonth', 'tgtYear', 'tgtX', 'tgtStartYear'].forEach(id => $(id).addEventListener('change', runTarget));
+['tgtMonth', 'tgtYear', 'tgtX'].forEach(id => $(id).addEventListener('change', runTarget));
 $('roundAB').addEventListener('change', () => { if (state) onCalculate(); });
 document.querySelectorAll('.map-input').forEach(el => {
   el.addEventListener('focus', () => { lastFocused = el; });
